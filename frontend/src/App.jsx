@@ -1,9 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import ChatUI from "./ChatUI";
+import ChatWindow from "./ChatWindow";
+import Uploader from "./Uploader";
+import ResultItem from "./ResultItem";
+import SourceModal from "./SourceModal";
 
 function App() {
   const [messages, setMessages] = useState([]);
   const [isTyping, setIsTyping] = useState(false);
+  const [results, setResults] = useState([]);
+  const [modalItem, setModalItem] = useState(null);
   const [dark, setDark] = useState(() => {
     if (typeof window === "undefined") return false;
     const saved = localStorage.getItem("theme-dark");
@@ -18,15 +23,20 @@ function App() {
     setMessages((prev) => [...prev, { role: "user", content: text }]);
     setIsTyping(true);
     try {
-      const res = await fetch("http://localhost:8000/api/chat", {
+      const res = await fetch("http://localhost:8000/query", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text }),
+        body: JSON.stringify({ query: text }),
       });
       const data = await res.json();
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: data.answer },
+        {
+          role: "assistant",
+          content: data.answer,
+          sources: data.sources,
+          onOpenSource: setModalItem,
+        },
       ]);
     } catch (e) {
       setMessages((prev) => [
@@ -35,6 +45,16 @@ function App() {
       ]);
     }
     setIsTyping(false);
+  };
+
+  const doSearch = async (query) => {
+    const res = await fetch("http://localhost:8000/search/similarity", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query, k: 8 }),
+    });
+    const data = await res.json();
+    setResults(data.results || []);
   };
 
   return (
@@ -53,9 +73,24 @@ function App() {
               {dark ? "Light" : "Dark"}
             </button>
           </div>
-          <ChatUI messages={messages} onSend={handleSend} isTyping={isTyping} />
+          <Uploader onUploaded={() => doSearch("")} />
+          <ChatWindow
+            messages={messages}
+            onQuery={handleSend}
+            isTyping={isTyping}
+          />
+          {results.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {results.map((r, i) => (
+                <ResultItem key={i} item={r} onOpen={setModalItem} />
+              ))}
+            </div>
+          )}
         </div>
       </div>
+      {modalItem && (
+        <SourceModal item={modalItem} onClose={() => setModalItem(null)} />
+      )}
     </div>
   );
 }

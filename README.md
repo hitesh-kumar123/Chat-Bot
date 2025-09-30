@@ -39,6 +39,44 @@ npm install
 npm run dev
 ```
 
+Docker (offline-friendly)
+
+- Build backend image:
+
+```
+docker build -t rag-backend ./backend
+```
+
+- Prepare local folders for persistent data and models:
+
+```
+mkdir -p backend/app/storage backend/models
+```
+
+- Run backend with volumes mounted for storage and models:
+
+```
+docker run --rm -p 8000:8000 \
+  -v %cd%/backend/app/storage:/app/app/storage \
+  -v %cd%/backend/models:/app/models \
+  -e WHISPER_CPP_BIN=/app/models/whisper/main \
+  -e WHISPER_CPP_MODEL=/app/models/whisper/ggml-base.en.bin \
+  rag-backend
+```
+
+On macOS/Linux replace `%cd%` with `$(pwd)`.
+
+Docker Compose
+
+```
+docker-compose up --build
+```
+
+This starts the backend on port 8000 and a frontend preview on 5173. Mounts:
+
+- `/app/app/storage` ← `backend/app/storage`
+- `/app/models` ← `backend/models` (place large local models here)
+
 Offline goals
 
 - All inference should work locally once you implement model loading in `backend/` and use local embeddings. The `backend/scripts/download_models.sh` is a placeholder to fetch required models/checkpoints ahead of time.

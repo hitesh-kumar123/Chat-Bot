@@ -10,7 +10,9 @@
   },
   "dependencies": {
     "react": "18.3.1",
-    "react-dom": "18.3.1"
+    "react-dom": "18.3.1",
+    "pdfjs-dist": "4.6.82",
+    "wavesurfer.js": "7.8.6"
   },
   "devDependencies": {
     "autoprefixer": "10.4.20",
