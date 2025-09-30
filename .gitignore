@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+dist/
+build/
+.coverage
+
+# Node / Frontend
+node_modules/
+.parcel-cache/
+.turbo/
+.next/
+dist/
+build/
+*.log
+
+# Env & Editor
+.env
+.env.*
+.DS_Store
+.idea/
+.vscode/
+
+
