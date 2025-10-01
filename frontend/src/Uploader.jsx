@@ -7,9 +7,9 @@ export default function Uploader({ onUploaded }) {
   const onDrop = useCallback(async (e) => {
     e.preventDefault();
     setDragOver(false);
-    const file = e.dataTransfer.files?.[0];
-    if (!file) return;
-    await upload(file);
+    const files = Array.from(e.dataTransfer.files || []);
+    if (!files.length) return;
+    await uploadMany(files);
   }, []);
 
   const upload = async (file) => {
@@ -22,6 +22,27 @@ export default function Uploader({ onUploaded }) {
     });
     const data = await res.json();
     setStatus(`Indexed ${data.vectors_indexed} vectors from ${data.file}`);
+    onUploaded?.(data);
+  };
+
+  const uploadMany = async (files) => {
+    if (!files.length) return;
+    if (files.length === 1) {
+      return upload(files[0]);
+    }
+    setStatus(`Uploading ${files.length} files...`);
+    const form = new FormData();
+    files.forEach((f) => form.append("files", f));
+    const res = await fetch("http://localhost:8000/ingest/batch", {
+      method: "POST",
+      body: form,
+    });
+    const data = await res.json();
+    setStatus(
+      `Indexed ${data.vectors_indexed} vectors from ${
+        data.files?.length || 0
+      } files`
+    );
     onUploaded?.(data);
   };
 
@@ -41,14 +62,18 @@ export default function Uploader({ onUploaded }) {
       }
     >
       <p className="text-sm text-gray-600 dark:text-gray-400">
-        Drag & drop files here or
+        Drag & drop files (multiple supported) here or
       </p>
       <label className="inline-block mt-2 cursor-pointer rounded px-3 py-2 bg-blue-600 text-white">
         Browse
         <input
           type="file"
           className="hidden"
-          onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])}
+          multiple
+          onChange={(e) => {
+            const files = Array.from(e.target.files || []);
+            if (files.length) uploadMany(files);
+          }}
         />
       </label>
       {status && <div className="mt-2 text-sm">{status}</div>}

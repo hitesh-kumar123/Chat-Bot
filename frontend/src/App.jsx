@@ -19,8 +19,11 @@ function App() {
     localStorage.setItem("theme-dark", JSON.stringify(dark));
   }, [dark]);
 
-  const handleSend = async (text) => {
-    setMessages((prev) => [...prev, { role: "user", content: text }]);
+  const handleSend = async (payload) => {
+    const text = typeof payload === "string" ? payload : payload?.text || "";
+    const imageUrl =
+      typeof payload === "object" ? payload?.imageUrl || null : null;
+    setMessages((prev) => [...prev, { role: "user", content: text, imageUrl }]);
     setIsTyping(true);
     try {
       const res = await fetch("http://localhost:8000/query", {

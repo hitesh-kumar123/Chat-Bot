@@ -11,6 +11,17 @@ from .image_utils import get_image_size
 import fitz  # PyMuPDF
 from docx import Document
 
+# Optional OCR/table extraction dependencies
+try:
+    import pytesseract  # type: ignore
+except Exception:
+    pytesseract = None  # type: ignore
+
+try:
+    import camelot  # type: ignore
+except Exception:
+    camelot = None  # type: ignore
+
 
 @dataclass
 class Chunk:
@@ -47,11 +58,39 @@ def _split_text(text: str, min_size: int = 400, max_size: int = 700, overlap_rat
 def extract_pdf(path: str, file_name: str) -> List[Chunk]:
     doc = fitz.open(path)
     chunks: List[Chunk] = []
-    for i, page in enumerate(doc, start=1):
-        text = page.get_text("text")
-        for ch in _split_text(text):
-            chunks.append(Chunk(content=ch, file_name=file_name, file_type="pdf", page_number=i, filepath=path))
-    doc.close()
+    try:
+        for i, page in enumerate(doc, start=1):
+            # Prefer selectable text
+            text = page.get_text("text") or ""
+            if not text.strip() and pytesseract is not None:
+                # Fallback to OCR for scanned pages
+                # Render page to image and OCR
+                pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                try:
+                    text = pytesseract.image_to_string(img)
+                except Exception:
+                    text = ""
+            # Add text chunks
+            for ch in _split_text(text):
+                chunks.append(Chunk(content=ch, file_name=file_name, file_type="pdf", page_number=i, filepath=path))
+
+        # Table extraction (optional)
+        if camelot is not None:
+            try:
+                tables = camelot.read_pdf(path, pages="all")
+                for t in tables:
+                    try:
+                        table_text = t.df.to_csv(index=False)
+                    except Exception:
+                        # Fallback to string representation
+                        table_text = str(t.df)
+                    for ch in _split_text(table_text, min_size=100, max_size=800):
+                        chunks.append(Chunk(content=ch, file_name=file_name, file_type="pdf", filepath=path))
+            except Exception:
+                pass
+    finally:
+        doc.close()
     return chunks
 
 
@@ -63,16 +102,28 @@ def extract_docx(path: str, file_name: str) -> List[Chunk]:
 
 
 def extract_image(path: str, file_name: str) -> List[Chunk]:
-    # For images, return one chunk; embedding will use the image itself
+    # For images, return one visual chunk; embedding will use the image itself
     try:
         w, h = get_image_size(path)
     except Exception:
         w, h = None, None
-    ch = Chunk(content=f"Image: {file_name}", file_name=file_name, file_type="image", filepath=path)
-    # temporarily store dimensions in unused fields via setattr during metadata stage
-    setattr(ch, "width", w)
-    setattr(ch, "height", h)
-    return [ch]
+    chunks: List[Chunk] = []
+    ch_img = Chunk(content=f"Image: {file_name}", file_name=file_name, file_type="image", filepath=path)
+    setattr(ch_img, "width", w)
+    setattr(ch_img, "height", h)
+    chunks.append(ch_img)
+
+    # If OCR is available, also extract text content from the image
+    if pytesseract is not None:
+        try:
+            with Image.open(path) as im:
+                text = pytesseract.image_to_string(im) or ""
+            for t in _split_text(text):
+                chunks.append(Chunk(content=t, file_name=file_name, file_type="text", filepath=path))
+        except Exception:
+            pass
+
+    return chunks
 
 
 def transcribe_audio_with_whisper_cpp(path: str):

@@ -94,6 +94,84 @@ async def ingest(file: UploadFile = File(...)):
     return {"chunks_added": total_chunks, "vectors_indexed": vectors_added, "file": file.filename}
 
 
+@app.post("/ingest/batch")
+async def ingest_batch(files: list[UploadFile] = File(...)):
+    ensure_storage()
+    storage_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "storage"))
+    os.makedirs(storage_dir, exist_ok=True)
+    if not any(r.path == "/storage" for r in app.router.routes):
+        app.mount("/storage", StaticFiles(directory=storage_dir), name="storage")
+
+    total_chunks = 0
+    total_vectors = 0
+    ingested = []
+    for file in files:
+        if not file.filename:
+            continue
+        dest_path = os.path.join(storage_dir, file.filename)
+        data = await file.read()
+        with open(dest_path, "wb") as f:
+            f.write(data)
+
+        chunks = extract_any(dest_path, file.filename, file.content_type or "")
+        text_chunks = [c for c in chunks if c.file_type in ("pdf", "docx", "text", "audio")]
+        image_chunks = [c for c in chunks if c.file_type == "image"]
+
+        if text_chunks:
+            texts = [c.content for c in text_chunks]
+            embs = embed_texts(texts)
+            meta = [
+                {
+                    "content": c.content,
+                    "file_name": c.file_name,
+                    "file_type": c.file_type,
+                    "page_number": c.page_number,
+                    "timestamp": c.timestamp,
+                    "filepath": c.filepath,
+                }
+                for c in text_chunks
+            ]
+            total_vectors += add_embeddings_with_metadata(embs, meta)
+            total_chunks += len(texts)
+
+        if image_chunks:
+            paths = [c.filepath for c in image_chunks if c.filepath]
+            if paths:
+                embs = embed_image_paths(paths)
+                meta = [
+                    {
+                        "content": c.content,
+                        "file_name": c.file_name,
+                        "file_type": c.file_type,
+                        "page_number": c.page_number,
+                        "timestamp": c.timestamp,
+                        "filepath": c.filepath,
+                        "width": getattr(c, "width", None),
+                        "height": getattr(c, "height", None),
+                        "bbox": None,
+                    }
+                    for c in image_chunks
+                ]
+                total_vectors += add_embeddings_with_metadata(embs, meta)
+                total_chunks += len(paths)
+
+        ingested.append({"file": file.filename})
+
+    return {"chunks_added": total_chunks, "vectors_indexed": total_vectors, "files": ingested}
+
+
+@app.post("/summarize")
+def summarize(payload: dict):
+    from .rag import answer_query
+    query = payload.get("query")
+    if not query:
+        raise HTTPException(status_code=400, detail="Missing query")
+    # Use RAG with high k to produce a summary of the most relevant content
+    # Here we simply call answer_query with the configured model
+    cfg_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "config.yaml"))
+    return answer_query(cfg_path, query)
+
+
 @app.post("/api/chat")
 async def chat(query: dict):
     # Placeholder: perform retrieval + generation
