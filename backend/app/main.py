@@ -103,11 +103,18 @@ async def chat(query: dict):
 
 @app.post("/query")
 def query(payload: dict):
-    q = payload.get("query", "")
-    if not q:
-        raise HTTPException(status_code=400, detail="Missing query")
-    cfg_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "config.yaml"))
-    return answer_query(cfg_path, q)
+    try:
+        q = payload.get("query", "")
+        if not q:
+            raise HTTPException(status_code=400, detail="Missing query")
+        cfg_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "config.yaml"))
+        return answer_query(cfg_path, q)
+    except HTTPException:
+        # re-raise FastAPI HTTP errors as-is
+        raise
+    except Exception as e:
+        # surface underlying backend errors to the client to aid debugging
+        raise HTTPException(status_code=500, detail=f"Query failed: {e}")
 
 
 @app.get("/status")

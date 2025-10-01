@@ -48,6 +48,10 @@ function App() {
   };
 
   const doSearch = async (query) => {
+    if (!query || !query.trim()) {
+      setResults([]);
+      return;
+    }
     const res = await fetch("http://localhost:8000/search/similarity", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -73,7 +77,7 @@ function App() {
               {dark ? "Light" : "Dark"}
             </button>
           </div>
-          <Uploader onUploaded={() => doSearch("")} />
+          <Uploader onUploaded={() => doSearch(null)} />
           <ChatWindow
             messages={messages}
             onQuery={handleSend}
